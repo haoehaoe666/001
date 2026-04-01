@@ -85,7 +85,7 @@ def main(users, action=False):
             if now.hour >= 20:
                 logging.info(f"到达预定时间: {now.strftime('%H:%M:%S')}，开始抢座！")
                 break
-            time.sleep(0.05) # 稍微缩短检查间隔，提高精度
+            time.sleep(0.1) # 稍微缩短检查间隔，提高精度
 
     # 3. 第三步：原有的抢座逻辑开始执行
     current_time = get_current_time(action)

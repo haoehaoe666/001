@@ -3,7 +3,6 @@ import time
 import argparse
 import os
 import logging
-import datetime
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -25,14 +24,14 @@ get_current_dayofweek = lambda action: (
 
 
 SLEEPTIME = 0.2  # 每次抢座的间隔
-ENDTIME = "22:12:00"  # 根据学校的预约座位时间+1min即可
+ENDTIME = "20:01:00"  # 根据学校的预约座位时间+1min即可
 
 ENABLE_SLIDER = True  # 是否有滑块验证
 MAX_ATTEMPT = 5  # 最大尝试次数
 RESERVE_NEXT_DAY = False  # 预约明天而不是今天的
 
 
-def login_and_reserve(users, usernames, passwords, action, success_list=None, sessions=None):
+def login_and_reserve(users, usernames, passwords, action, success_list=None):
     logging.info(
         f"Global settings: \nSLEEPTIME: {SLEEPTIME}\nENDTIME: {ENDTIME}\nENABLE_SLIDER: {ENABLE_SLIDER}\nRESERVE_NEXT_DAY: {RESERVE_NEXT_DAY}"
     )
@@ -55,9 +54,15 @@ def login_and_reserve(users, usernames, passwords, action, success_list=None, se
             logging.info(
                 f"----------- {username} -- {times} -- {seatid} try -----------"
             )
-            # --- 修改处：直接使用预存好的 session ---
-            s = sessions[index]
-            # ------------------------------------
+            s = reserve(
+                sleep_time=SLEEPTIME,
+                max_attempt=MAX_ATTEMPT,
+                enable_slider=ENABLE_SLIDER,
+                reserve_next_day=RESERVE_NEXT_DAY,
+            )
+            s.get_login_status()
+            s.login(username, password)
+            s.requests.headers.update({"Host": "office.chaoxing.com"})
             suc = s.submit(times, roomid, seatid, action)
             success_list[index] = suc
     return success_list
@@ -65,33 +70,13 @@ def login_and_reserve(users, usernames, passwords, action, success_list=None, se
 
 def main(users, action=False):
     # 1. 第一步：如果是 GitHub Action，先把账号密码从环境变量里拿出来
+    # 这一步要在八点前做完，不能等八点到了才现拿
     usernames, passwords = None, None
     if action:
         usernames, passwords = get_user_credentials(action)
 
-    # --- 新增：八点前提前登录并预存 session ---
-    logging.info("⏳ 正在执行预登录逻辑...")
-    sessions = []
-    for index, user in enumerate(users):
-        username, password = user.get("username"), user.get("password")
-        if action:
-            username = usernames.split(",")[index]
-            password = passwords.split(",")[index]
-        
-        s = reserve(
-            sleep_time=SLEEPTIME,
-            max_attempt=MAX_ATTEMPT,
-            enable_slider=ENABLE_SLIDER,
-            reserve_next_day=RESERVE_NEXT_DAY,
-        )
-        s.get_login_status()
-        s.login(username, password)
-        s.requests.headers.update({"Host": "office.chaoxing.com"})
-        sessions.append(s)
-        logging.info(f"✅ 用户 {username} 预登录完成")
-
-    # 2. 第二步：进入精准等待循环
-    if action:
+        # 2. 第二步：进入精准等待循环
+        import datetime
         logging.info("GitHub Action 模式已启动，正在预热并等待北京时间 20:00:00...")
         while True:
             # 获取当前北京时间
@@ -114,11 +99,9 @@ def main(users, action=False):
     
     while current_time < ENDTIME:
         attempt_times += 1
-        # --- 修改处：传入 sessions 参数 ---
         success_list = login_and_reserve(
-            users, usernames, passwords, action, success_list, sessions=sessions
+            users, usernames, passwords, action, success_list
         )
-        # -------------------------------
         print(
             f"attempt time {attempt_times}, time now {current_time}, success list {success_list}"
         )
